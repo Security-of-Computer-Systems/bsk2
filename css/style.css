@@ -1,0 +1,80 @@
+
+a:link {
+    text-decoration: none;
+  }
+  
+  a:visited {
+    text-decoration: none;
+  }
+  
+  a:hover {
+    text-decoration: none;
+  }
+  
+  a:active {
+    text-decoration: none;
+  }
+
+.menuButton{
+    margin-left: auto;
+    margin-right: auto;
+    width: 30%;
+    height: 40px;
+    font-size: 25px;
+    background-color: rgb(15, 166, 216);
+    display: block;
+    margin-top: 10px;
+}
+
+.menu{
+    margin-top: 30px;
+    text-align: center;
+}
+
+form{
+    display: inline-block;
+}
+
+.formInput{
+    display: block;
+    width: 300px;
+}
+
+.submit{
+    width: 300px;
+    height: 30px;
+    font-size: 25px;
+    background-color: rgb(15, 166, 216);
+    display: block;
+    margin-top: 10px;
+}
+
+table, td, th{
+    border: 1px solid rgb(15, 166, 216);
+    border-collapse: collapse;
+    
+}
+
+table{
+    display: inline-block;
+}
+
+td, th{
+    font-size: 25px;
+    text-align: center;
+    vertical-align: middle;
+    height: 30px;
+}
+
+tr{
+
+}
+
+input[type='checkbox']{
+    width: 25px;
+    height: 25px;
+}
+input[type='radio']{
+    width: 25px;
+    height: 25px;
+}
