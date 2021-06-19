@@ -27,6 +27,14 @@ def init_database(cur):
 	    FOREIGN KEY (FK_User) references Users (username) ON DELETE CASCADE
         )""")
 
+def authorize(username, password):
+    cur.execute("SELECT password FROM Users WHERE username = %s;", (username,))
+    result = cur.fetchone()
+    if result is not None and result[0] == password:
+        return 1
+    else:
+        return 0
+
 @app.route("/users", methods=['POST'])
 def register():
     username = request.json['username']
@@ -34,6 +42,7 @@ def register():
 
     try:
         cur.execute("INSERT INTO Users VALUES(%s, %s)", (username, password))
+        conn.commit()
         return json.dumps({'success': True}), 200, {'ContentType':'application/json'}
     except psycopg2.errors.UniqueViolation:
         return json.dumps({'success': False}), 400, {'ContentType':'application/json'}
@@ -54,24 +63,32 @@ def login():
 
 @app.route("/films", methods=['GET'])
 def get_films():
-    cur.execute("""SELECT id, title FROM Films;""")
-    conn.commit()
-    films = cur.fetchall()
+    username = request.authorization['username']
+    password = request.authorization['password']
 
-    keys = ["id", "title"]
-    dictionary_list = []
-    for film in films:
-        dictionary_list.append(dict(zip(keys, film)))
+    if authorize(username, password):
+        cur.execute("""SELECT id, title, write, read, ownership FROM Films
+        INNER JOIN Permissions ON Films.id = Permissions.FK_Film
+        INNER JOIN Users ON Users.username = Permissions.FK_User
+        WHERE username = %s""", (username,))
+        conn.commit()
+        films = cur.fetchall()
 
-    return json.dumps(dictionary_list)
+        keys = ["id", "title", "write", "read", "ownership"]
+        dictionary_list = []
+        for film in films:
+            dictionary_list.append(dict(zip(keys, film)))
 
+        return json.dumps(dictionary_list)
+
+    return json.dumps({'success': False}), 400, {'ContentType': 'application/json'}
 
 @app.route("/film/<int:id>", methods=['GET'])
 def get_film(id):
     username = request.authorization['username']
     password = request.authorization['password']
 
-    if login(username, password):
+    if authorize(username, password):
         cur.execute("""SELECT read FROM Permissions 
         INNER JOIN Films ON Films.id = Permissions.FK_Film
         INNER JOIN Users ON Users.username = Permissions.FK_User
@@ -91,9 +108,17 @@ def get_film(id):
 def set_film():
     title = request.json['title']
     time = request.json['time']
-    cur.execute("INSERT INTO Films  (title, time) VALUES(%s, %s)", (title, time))
-    conn.commit()
-    return json.dumps({'success': True}), 200, {'ContentType':'application/json'}
+    username = request.authorization['username']
+    password = request.authorization['password']
+    if authorize(username, password):
+        cur.execute("INSERT INTO Films  (title, time) VALUES(%s, %s)", (title, time))
+        cur.execute("SELECT id FROM Films ORDER BY id DESC LIMIT 1")
+        cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s)",
+                    (cur.fetchone()[0], username, True, True, True))
+        conn.commit()
+        return json.dumps({'success': True}), 200, {'ContentType':'application/json'}
+    else:
+        return json.dumps({'success': False}), 400, {'ContentType':'application/json'}
 
 
 @app.route("/films/<int:id>", methods=['PUT'])
@@ -103,7 +128,7 @@ def edit_film(id):
     username = request.authorization['username']
     password = request.authorization['password']
 
-    if login(username, password):
+    if authorize(username, password):
         cur.execute("""SELECT write FROM Permissions 
         INNER JOIN Films ON Films.id = Permissions.FK_Film
         INNER JOIN Users ON Users.username = Permissions.FK_User
@@ -112,6 +137,7 @@ def edit_film(id):
         result = cur.fetchone()
         if result is not None and result[0] == True:
             cur.execute("UPDATE Films SET title = %s, time = %s WHERE id = %s", (title, time, id))
+            conn.commit()
             return 1
     return 0
 
@@ -121,7 +147,7 @@ def delete_film(id):
     username = request.authorization['username']
     password = request.authorization['password']
 
-    if login(username, password):
+    if authorize(username, password):
         cur.execute("""SELECT write FROM Permissions 
         INNER JOIN Films ON Films.id = Permissions.FK_Film
         INNER JOIN Users ON Users.username = Permissions.FK_User
@@ -130,6 +156,7 @@ def delete_film(id):
         result = cur.fetchone()
         if result is not None and result[0] == True:
             cur.execute("DELETE FROM Films WHERE id = %s;", (id,))
+            conn.commit()
             return json.dumps({'success': True}), 200, {'ContentType':'application/json'}
     return json.dumps({'success': False}), 400, {'ContentType':'application/json'}
 
@@ -142,7 +169,7 @@ def set_permissions():
     read = request.json['read']
     write = request.json['write']
 
-    if login(username, password):
+    if authorize(username, password):
         # Sprawdź czy film należy do użytkownika przekazującego
         cur.execute("""SELECT ownership FROM Permissions 
         INNER JOIN Films ON Films.id = Permissions.FK_Film
@@ -160,10 +187,11 @@ def set_permissions():
                 # Insert
                 cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s)",
                             id, username2, read, write, False)
+
             else:
                 # Update
                 cur.execute("UPDATE Permissions SET read = %s, write = %s WHERE id = %s", (read, write))
-
+            conn.commit()
             return json.dumps({'success': True}), 200, {'ContentType':'application/json'}
     return json.dumps({'success': False}), 400, {'ContentType':'application/json'}
 
