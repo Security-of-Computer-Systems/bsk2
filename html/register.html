@@ -7,12 +7,12 @@
     <body>
         <div class="menu">
             <h1>Rejestracja</h1>
-            <form>
+            <form method="POST">
                 <label>Login</label>
-                <input type="text" class="formInput" id="login"/>
+                <input type="text" name="login" class="formInput"/>
                 <label>Hasło</label>
-                <input type="password" class="formInput" id="password"/>
-                <input type="button" value="Wyślij zapytanie" class="formInput, submit" onclick="register()"/>
+                <input type="password" name="password" class="formInput"/>
+                <input type="submit" value="Wyślij zapytanie" class="formInput, submit"/>
             </form>
         </div>
     </body>

@@ -4,11 +4,11 @@
     </head>
     <body>
         <div class="menu">
-            <form>
+            <form method="POST">
                 <label>Nazwa filmu</label>
-                <input type="text" class="formInput"/>
-                <label>Cena</label>
-                <input type="number" class="formInput"/>
+                <input type="text" class="formInput" name="title"/>
+                <label>Czas</label>
+                <input type="number" class="formInput" name="time"/>
                 <input type="submit" class="formInput, submit"/>
             </form>
             <a href="https://localhost:5000/account"><button class="menuButton">Wróć</button></a>

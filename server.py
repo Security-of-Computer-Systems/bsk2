@@ -60,25 +60,80 @@ def serve_films():
 def serve_delete_film():
     return flask.make_response(render_template('deleteFilm.html'))
 
-@app.route('/add-film')
+@app.route('/add-film', methods=['GET','POST'])
 def serve_add_film():
-    return flask.make_response(render_template('addFilm.html'))
+    if request.method == "POST":
+
+        sessionID = request.cookies.get("sessID")
+
+        cur.execute("""
+        SELECT username 
+        FROM Users 
+        WHERE sessionID = %s""",(sessionID,))
+
+        username = cur.fetchone()
+
+        if username is not None:
+            title = request.form.get("title")
+            time = request.form.get("time")
+
+            cur.execute("INSERT INTO Films  (title, time) VALUES(%s, %s)", (title, time,))
+            cur.execute("SELECT id FROM Films ORDER BY id DESC LIMIT 1")
+            cur.execute("INSERT INTO Permissions VALUES(%s,%s, %s, %s, %s)",
+                        (cur.fetchone(),username, True, True, True))
+            conn.commit()
+
+            return flask.redirect(flask.url_for("serve_add_film"))
+        else:
+            return flask.redirect(flask.url_for("serve_add_film"))
+
+    else:
+        return flask.make_response(render_template('addFilm.html'))
 
 @app.route('/login', methods=['GET','POST'])
 def serve_login():
     if request.method=="POST":
-        username = request.form['username']
-        password = request.form['password']
+        username = request.form.get("login")
+        password = request.form.get("password")
 
-        sessionId = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(256))
+        cur.execute("SELECT password FROM Users WHERE username = %s;", (username,))
+        result = cur.fetchone()
+        if result is not None and result[0] == password:
+            sessionId = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(256))
 
-        return flask.redirect(flask.url_for('serve_account'))
+            cur.execute("UPDATE Users "
+                        "SET sessionID = %s"
+                        "WHERE username = %s;", (sessionId,username,))
+
+            conn.commit()
+
+            response = flask.make_response()
+            response.status_code = 302
+            response.set_cookie("sessID", sessionId, httponly=True, secure=True)
+            response.location = address + "account"
+
+            return response
+
+        else:
+            return json.dumps({'success': False}), 400, {'ContentType': 'application/json'}
+
     else:
         return flask.make_response(render_template('login.html'))
 
-@app.route('/register')
+@app.route('/register', methods=['GET','POST'])
 def serve_register():
-    return flask.make_response(render_template('register.html'))
+    if request.method=='POST':
+        username = request.form.get("login")
+        password = request.form.get("password")
+
+        try:
+            cur.execute("INSERT INTO Users (username, password) VALUES(%s, %s)", (username, password,))
+            conn.commit()
+            return json.dumps({'success': True}), 200, {'ContentType': 'application/json'}
+        except psycopg2.errors.UniqueViolation:
+            return json.dumps({'success': False}), 400, {'ContentType': 'application/json'}
+    else:
+        return flask.make_response(render_template('register.html'))
 
 @app.route('/account')
 def serve_account():
@@ -88,71 +143,25 @@ def serve_account():
 def serve_permissions():
     return flask.make_response(render_template('accessManipulation.html'))
 
-def authorize(username, password):
-    cur.execute("SELECT password FROM Users WHERE username = %s;", (username,))
-    result = cur.fetchone()
-    if result is not None and result[0] == password:
-        return 1
-    else:
-        return 0
-
-@app.route("/users", methods=['POST'])
-def register():
-    username = request.json['username']
-    password = request.json['password']
-    try:
-        cur.execute("INSERT INTO Users VALUES(%s, %s)", (username, password))
-        conn.commit()
-        return json.dumps({'success': True}), 200, {'ContentType':'application/json'}
-    except psycopg2.errors.UniqueViolation:
-        return json.dumps({'success': False}), 400, {'ContentType':'application/json'}
-
-
-@app.route("/login", methods=['GET','POST'])
-def login():
-    username = request.form['username']
-    password = request.form['password']
-
-    sessionId = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(256))
-
-    response = flask.make_response()
-    response.status_code =302
-    response.set_cookie("sessID", sessionId,httponly=True, secure=True)
-    response.location = address + "account"
-    return  flask.redirect(flask.url_for('serve_account'))
-
-    cur.execute("SELECT password FROM Users WHERE username = %s;", (username,))
-    result = cur.fetchone()
-    if result is not None and result[0] == password:
-        return response
-        #return json.dumps({'success': True, 'ssesId': ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(256))}), 200, {'ContentType':'application/json'}
-    else:
-        return json.dumps({'success': False}), 400, {'ContentType':'application/json'}
-
-
-
-'''
-@app.route("/setcookie", methods=['GET'])
-def setcookie():
-    sessionId = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(256))
-    response = flask.make_response(render_template('login.html'))
-    response.status_code = 200
-    response.set_cookie("sessID", sessionId, httponly=True, secure=True)
-
-    return response
-'''
-
-
 @app.route("/films", methods=['GET'])
 def get_films():
 
-    print(request.cookies.get("sessID"))
-    #username = request.authorization['username']
-    #password = request.authorization['password']
+    sessionID = request.cookies.get("sessID")
 
-    username = request.json['username']
-    password = request.json['password']
+    cur.execute("""SELECT id, title, time, write, read, ownership FROM Films
+            INNER JOIN Permissions ON Films.id = Permissions.FK_Film
+            INNER JOIN Users ON Users.username = Permissions.FK_User
+            WHERE sessionID = %s""", (sessionID,))
+    conn.commit()
+    films = cur.fetchall()
+    keys = ["id","title", "time", "write", "read", "ownership"]
+    dictionary_list = []
+    for film in films:
+        dictionary_list.append(dict(zip(keys, film)))
 
+    return json.dumps(dictionary_list)
+
+'''
     if authorize(username, password):
         cur.execute("""SELECT id, title, write, read, ownership FROM Films
         INNER JOIN Permissions ON Films.id = Permissions.FK_Film
@@ -168,7 +177,7 @@ def get_films():
 
         return json.dumps(dictionary_list)
 
-    return json.dumps({'success': False}), 200, {'ContentType': 'application/json'}
+    return json.dumps({'success': False}), 200, {'ContentType': 'application/json'}'''
 
 @app.route("/film/<int:id>", methods=['GET'])
 def get_film(id):
@@ -190,7 +199,7 @@ def get_film(id):
             return json.dumps(dict(zip(keys, film)))
     return json.dumps({'success': False}), 400, {'ContentType':'application/json'}
 
-
+'''
 @app.route("/films", methods=['POST'])
 def set_film():
     title = request.json['title']
@@ -206,7 +215,7 @@ def set_film():
         return json.dumps({'success': True}), 200, {'ContentType':'application/json'}
     else:
         return json.dumps({'success': False}), 400, {'ContentType':'application/json'}
-
+'''
 
 @app.route("/films/<int:id>", methods=['PUT'])
 def edit_film(id):
@@ -255,16 +264,17 @@ def set_permissions():
     username2 = request.json['username2']
     read = request.json['read']
     write = request.json['write']
+    delegation = request.json['delegation']
 
     if authorize(username, password):
-        # Sprawdź czy film należy do użytkownika przekazującego
-        cur.execute("""SELECT ownership FROM Permissions 
+        # Sprawdź czy użytkownik przekazujący ma prawa do przekazania i czy posiada prawa przekazywane
+        cur.execute("""SELECT delegation, read, write FROM Permissions 
         INNER JOIN Films ON Films.id = Permissions.FK_Film
         INNER JOIN Users ON Users.username = Permissions.FK_User
         WHERE id = %s and username = %s
         """, (id, username))
         result = cur.fetchone()
-        if result is not None and result[0] == True:
+        if result is not None and result[0] == True and (read <= result[1]) and (write <= result[2]):
             # Sprawdź czy relacja użytkownika z filmem istnieje
             cur.execute("""SELECT * FROM Permissions 
                     WHERE FK_Film = %s and FK_User = %s
@@ -273,11 +283,11 @@ def set_permissions():
             if result2 is None:
                 # Insert
                 cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s)",
-                            id, username2, read, write, False)
+                            id, username2, read, write, False, delegation)
 
             else:
                 # Update
-                cur.execute("UPDATE Permissions SET read = %s, write = %s WHERE id = %s", (read, write))
+                cur.execute("UPDATE Permissions SET read = %s, write = %s WHERE id = %s", (read, write, delegation))
             conn.commit()
             return json.dumps({'success': True}), 200, {'ContentType':'application/json'}
     return json.dumps({'success': False}), 400, {'ContentType':'application/json'}
