@@ -67,19 +67,22 @@ def init_database(cur):
                 ("Zielona mila", 188))
     cur.execute("INSERT INTO Films (title, time) VALUES(%s, %s)",
                 ("Ojciec Chrzestny", 175))
-    conn.commit()
-    # Create permissions
-    cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s)",
-                (1, "abacki", True, True, True, True))
-    cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s)",
-                (2, "babacki", True, True, True, True))
-    cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s)",
-                (3, "cabacki", True, True, True, True))
-    cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s)",
-                (1, "babacki", True, True, False, True))
-    cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s)",
-                (2, "babacki", True, True, False, False))
 
+    conn.commit()
+
+    # Create permissions
+    cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s, %s)",
+                (1, "abacki", True, True, True, True))
+    cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s, %s)",
+                (2, "babacki", True, True, True, True))
+    cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s, %s)",
+                (3, "cabacki", True, True, True, True))
+    cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s, %s)",
+                (1, "babacki", True, True, False, True))
+    cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s, %s)",
+                (3, "babacki", True, True, False, False))
+
+    conn.commit()
 
 
 @app.route('/css/<path:path>')
@@ -117,8 +120,8 @@ def serve_add_film():
 
             cur.execute("INSERT INTO Films  (title, time) VALUES(%s, %s)", (title, time,))
             cur.execute("SELECT id FROM Films ORDER BY id DESC LIMIT 1")
-            cur.execute("INSERT INTO Permissions VALUES(%s,%s, %s, %s, %s)",
-                        (cur.fetchone(),username, True, True, True))
+            cur.execute("INSERT INTO Permissions VALUES(%s,%s, %s, %s, %s, %s)",
+                        (cur.fetchone(),username, True, True, True, True))
             conn.commit()
 
             return flask.redirect(flask.url_for("serve_add_film"))
@@ -167,9 +170,9 @@ def serve_register():
         try:
             cur.execute("INSERT INTO Users (username, password) VALUES(%s, %s)", (username, password,))
             conn.commit()
-            return json.dumps({'success': True}), 200, {'ContentType': 'application/json'}
+            return flask.make_response(render_template('login.html'))
         except psycopg2.errors.UniqueViolation:
-            return json.dumps({'success': False}), 400, {'ContentType': 'application/json'}
+            return flask.make_response(render_template('register.html'))
     else:
         return flask.make_response(render_template('register.html'))
 
@@ -186,36 +189,20 @@ def get_films():
 
     sessionID = request.cookies.get("sessID")
 
-    cur.execute("""SELECT id, title, time, write, read, ownership FROM Films
-            INNER JOIN Permissions ON Films.id = Permissions.FK_Film
-            INNER JOIN Users ON Users.username = Permissions.FK_User
-            WHERE sessionID = %s""", (sessionID,))
+    cur.execute("""SELECT id, title, write, read, ownership, delegation FROM 
+                (SELECT FK_Film, write, read, ownership, delegation FROM Permissions
+                INNER JOIN Users ON Users.username = Permissions.FK_User
+                WHERE sessionID = %s) as user_permissions RIGHT JOIN Films on user_permissions.FK_Film = Films.id
+                """, (sessionID,))
+
     conn.commit()
     films = cur.fetchall()
-    keys = ["id","title", "time", "write", "read", "ownership"]
+    keys = ["id","title", "write", "read","delegation", "ownership" ]
     dictionary_list = []
     for film in films:
         dictionary_list.append(dict(zip(keys, film)))
 
     return json.dumps(dictionary_list)
-
-'''
-    if authorize(username, password):
-        cur.execute("""SELECT id, title, write, read, ownership FROM Films
-        INNER JOIN Permissions ON Films.id = Permissions.FK_Film
-        INNER JOIN Users ON Users.username = Permissions.FK_User
-        WHERE username = %s""", (username,))
-        conn.commit()
-        films = cur.fetchall()
-
-        keys = ["id", "title", "write", "read", "ownership"]
-        dictionary_list = []
-        for film in films:
-            dictionary_list.append(dict(zip(keys, film)))
-
-        return json.dumps(dictionary_list)
-
-    return json.dumps({'success': False}), 200, {'ContentType': 'application/json'}'''
 
 @app.route("/film/<int:id>", methods=['GET'])
 def get_film(id):
@@ -236,24 +223,6 @@ def get_film(id):
             keys = ["id", "title", "time"]
             return json.dumps(dict(zip(keys, film)))
     return json.dumps({'success': False}), 400, {'ContentType':'application/json'}
-
-'''
-@app.route("/films", methods=['POST'])
-def set_film():
-    title = request.json['title']
-    time = request.json['time']
-    username = request.authorization['username']
-    password = request.authorization['password']
-    if authorize(username, password):
-        cur.execute("INSERT INTO Films  (title, time) VALUES(%s, %s)", (title, time))
-        cur.execute("SELECT id FROM Films ORDER BY id DESC LIMIT 1")
-        cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s)",
-                    (cur.fetchone()[0], username, True, True, True))
-        conn.commit()
-        return json.dumps({'success': True}), 200, {'ContentType':'application/json'}
-    else:
-        return json.dumps({'success': False}), 400, {'ContentType':'application/json'}
-'''
 
 @app.route("/films/<int:id>", methods=['PUT'])
 def edit_film(id):
@@ -427,10 +396,6 @@ def transfer_ownership():
         return json.dumps({'success': True}), 200, {'ContentType':'application/json'}
     return json.dumps({'success': True}), 400, {'ContentType': 'application/json'}
 
-# TODO
-# transfer ownership
-
-
 
 # database connection
 try:
@@ -447,8 +412,9 @@ except psycopg2.OperationalError:
 
 
 
-init_database(cur)
-context = ('cert.pem', 'key.pem')#certificate and key files
+#certificate and key files
+context = ('cert.pem', 'key.pem')
+
 app.run(debug=True, ssl_context=context)
 
 
