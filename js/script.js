@@ -12,7 +12,7 @@ function getFilms()
             table = document.getElementById("filmsTable");
             
             var data = JSON.parse(this.responseText);
-            console.log(data);
+
             for(var i =0;i< data.length;i++)
             {
                 element = data[i];
@@ -20,18 +20,30 @@ function getFilms()
                 var row = table.insertRow(-1);
 
                 var id = row.insertCell(0);
+
                 var name = row.insertCell(1);
-                var time = row.insertCell(2);
-                var read = row.insertCell(3);
+
+                var read = row.insertCell(2);
+                var read_button = row.insertCell(3);
+
                 var write = row.insertCell(4);
-                var owner = row.insertCell(5);
+                var edit_button = row.insertCell(5);
+                var delete_button = row.insertCell(6)
+
+                var delegation = row.insertCell(7);
+
+                var ownership = row.insertCell(8);
+
 
                 id.innerHTML = element.id;
                 name.innerHTML = element.title;
-                time.innerHTML = element.time;
                 read.innerHTML = createCheckbox(element.read);
+                read_button.innerHTML = createButton(element.read,element.id)
                 write.innerHTML = createCheckbox(element.write);
-                owner.innerHTML = createCheckbox(element.owner);
+                edit_button.innerHTML = createButton(element.write,element.id)
+                delete_button.innerHTML = createButton(element.write,element.id)
+                delegation.innerHTML = createCheckbox(element.delegation)
+                ownership.innerHTML = createCheckbox(element.ownership);
             }
  
             // we get the returned data
@@ -44,12 +56,24 @@ function getFilms()
 
 function createCheckbox(checked)
 {
-    if(checked == true)
+    if(checked == null || checked == false)
     {
-        return "<input type=\"checkbox\" checked=\"true\" disabled=\"true\">"
+        return "<input type=\"checkbox\" disabled=\"true\" />"
     }
-    else
+    else if(checked==true)
     {
-        return "<input type=\"checkbox\" checked=\"false\" disabled=\"true\">"
+        return "<input type=\"checkbox\" checked disabled=\"true\" />"
+    }
+}
+
+function createButton(disabled, id)
+{
+    if(disabled == null || disabled == false)
+    {
+        return "<button disabled=\"true\" class=\"notUsableButton\"/>"
+    }
+    else if(disabled==true)
+    {
+        return "<button class=\"usableButton\"><a href=\""+id+"\"></a></button>"
     }
 }
