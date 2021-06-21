@@ -1,64 +1,47 @@
 <html>
     <head>
+        <meta charset="UTF-8">
         <link rel="stylesheet" type="text/css" href="../css/style.css" />
+        <script src="../js/script.js"></script>
     </head>
-    <body>
+    <body onload="getFilms(),getUsers()">
         <div class="menu">
-           <table>
+           <table id="filmsTable">
                 <tr>
+                    <th>Id</th>
                     <th>Film</th>
                     <th>Wybór</th>
                 </tr>
-                <tr>
-                    <td>Własny film 1</td>
-                    <td><input type="radio" name="film"></td>
-                </tr>
-                <tr>
-                    <td>Własny film 2</td>
-                    <td><input type="radio" name="film"></td>
-                </tr>
-                <tr>
-                    <td>Własny film 3</td>
-                    <td><input type="radio" name="film"></td>
-                </tr>
            </table>
-           <table>
+           <table id="usersTable">
             <tr>
                 <th>Użytkownik</th>
                 <th>Wybór</th>
             </tr>
-            <tr>
-                <td>Użytkownik2</td>
-                <td><input type="radio" name="user"></td>
-            </tr>
-            <tr>
-                <td>Użytkownik3</td>
-                <td><input type="radio" name="user"></td>
-            </tr>
-            <tr>
-                <td>Użytkownik4</td>
-                <td><input type="radio" name="user"></td>
-            </tr>
             </table>
-            <table>
+            <table id="permissionsTable">
                 <tr>
                     <th>Prawo</th>
                     <th>Wybór</th>
                 </tr>
                 <tr>
                     <td>Odczyt</td>
-                    <td><input type="checkbox"></td>
+                    <td><input type="checkbox" id="read"></td>
                 </tr>
                 <tr>
                     <td>Zapis</td>
-                    <td><input type="checkbox"></td>
+                    <td><input type="checkbox" id="write"></td>
+                </tr>
+                <tr>
+                    <td>Nadawanie</td>
+                    <td><input type="checkbox" id="delegation"></td>
                 </tr>
                 <tr>
                     <td>Właściciel</td>
-                    <td><input type="checkbox"></td>
+                    <td><input type="checkbox" id="ownership"></td>
                 </tr>
             </table>
-            <button class="menuButton">Nadaj prawa</button>
+            <button class="menuButton" onclick="setPermissions()">Nadaj prawa</button>
             <a href="https://localhost:5000/account"><button class="menuButton">Wróć</button></a>
         </div>
     </body>

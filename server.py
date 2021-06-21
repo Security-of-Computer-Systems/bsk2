@@ -170,7 +170,7 @@ def serve_register():
         try:
             cur.execute("INSERT INTO Users (username, password) VALUES(%s, %s)", (username, password,))
             conn.commit()
-            return flask.make_response(render_template('login.html'))
+            return flask.redirect(flask.url_for("serve_login"))
         except psycopg2.errors.UniqueViolation:
             return flask.make_response(render_template('register.html'))
     else:
@@ -184,12 +184,12 @@ def serve_account():
 def serve_permissions():
     return flask.make_response(render_template('accessManipulation.html'))
 
-@app.route("/films", methods=['GET'])
-def get_films():
+@app.route("/filmsWithPermissions", methods=['GET'])
+def get_films_with_permissions():
 
     sessionID = request.cookies.get("sessID")
 
-    cur.execute("""SELECT id, title, write, read, ownership, delegation FROM 
+    cur.execute("""SELECT id, title, write, read, delegation, ownership FROM 
                 (SELECT FK_Film, write, read, ownership, delegation FROM Permissions
                 INNER JOIN Users ON Users.username = Permissions.FK_User
                 WHERE sessionID = %s) as user_permissions RIGHT JOIN Films on user_permissions.FK_Film = Films.id
@@ -204,25 +204,46 @@ def get_films():
 
     return json.dumps(dictionary_list)
 
+@app.route("/films", methods=['GET'])
+def get_films():
+
+    sessionID = request.cookies.get("sessID")
+
+    cur.execute("""SELECT id,title FROM Permissions
+                INNER JOIN Users ON Users.username = Permissions.FK_User
+                INNER JOIN Films ON Films.id = Permissions.FK_Film
+                WHERE sessionID = %s and (delegation = True or ownership = True)
+                """, (sessionID, ))
+
+    conn.commit()
+    films = cur.fetchall()
+    keys = ["id","title"]
+    dictionary_list = []
+    for film in films:
+        dictionary_list.append(dict(zip(keys, film)))
+
+    return json.dumps(dictionary_list)
+
 @app.route("/film/<int:id>", methods=['GET'])
 def get_film(id):
-    username = request.authorization['username']
-    password = request.authorization['password']
 
-    if authorize(username, password):
-        cur.execute("""SELECT read FROM Permissions 
-        INNER JOIN Films ON Films.id = Permissions.FK_Film
-        INNER JOIN Users ON Users.username = Permissions.FK_User
-        WHERE id = %s and username = %s
-        """, (id, username))
-        result = cur.fetchone()
-        if result is not None and result[0] == True:
-            cur.execute("SELECT * FROM Films WHERE id = %s;", (id,))
+    sessionID = request.cookies.get("sessID")
 
-            film = cur.fetchall()[0]
-            keys = ["id", "title", "time"]
-            return json.dumps(dict(zip(keys, film)))
-    return json.dumps({'success': False}), 400, {'ContentType':'application/json'}
+    cur.execute("""SELECT read FROM Permissions 
+    INNER JOIN Films ON Films.id = Permissions.FK_Film
+    INNER JOIN Users ON Users.username = Permissions.FK_User
+    WHERE id = %s and sessionID = %s
+    """, (id, sessionID))
+    result = cur.fetchone()
+    if result is not None and result[0] == True:
+        cur.execute("SELECT * FROM Films WHERE id = %s;", (id,))
+
+        film = cur.fetchall()[0]
+        keys = ["id", "title", "time"]
+
+        return json.dumps(dict(zip(keys, film)))
+
+    return flask.make_response(render_template('showFilms.html'))
 
 @app.route("/films/<int:id>", methods=['PUT'])
 def edit_film(id):
@@ -312,7 +333,7 @@ def set_permissions():
     # find donor user's username
     cur.execute("""SELECT username FROM Users  
         WHERE sessionID = %s
-        """, (sessionID))
+        """, (sessionID,))
     donor_username = cur.fetchone()[0]
 
 
@@ -336,12 +357,12 @@ def set_permissions():
             result2 = cur.fetchone()
             if result2 is None:
                 # Insert
-                cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s)",
-                            id, username2, read, write, False, delegation)
+                cur.execute("INSERT INTO Permissions VALUES(%s,%s, %s, %s, %s, %s)",
+                            (id, username2, read, write, False, delegation,))
 
             else:
                 # Update
-                cur.execute("UPDATE Permissions SET read = %s, write = %s WHERE id = %s", (read, write, delegation))
+                cur.execute("UPDATE Permissions SET read = %s, write = %s, delegation = %s WHERE FK_Film = %s and FK_User = %s", (read, write, delegation, id, username2))
             conn.commit()
             return json.dumps({'success': True}), 200, {'ContentType':'application/json'}
     return json.dumps({'success': False}), 400, {'ContentType':'application/json'}
@@ -360,7 +381,7 @@ def get_users():
 
     return json.dumps(dictionary_list)
 
-@app.route("/permissions", methods=['POST'])
+@app.route("/transfer", methods=['POST'])
 def transfer_ownership():
     id = request.json['id']
     username2 = request.json['username2']
@@ -370,7 +391,7 @@ def transfer_ownership():
     sessionID = request.cookies.get("sessID")
 
     # Check if user is owner, and has assigned permissions
-    cur.execute("""SELECT ownership, delegation, read, write FROM Permissions 
+    cur.execute("""SELECT ownership, delegation, read, write, username FROM Permissions 
     INNER JOIN Films ON Films.id = Permissions.FK_Film
     INNER JOIN Users ON Users.username = Permissions.FK_User
     WHERE id = %s and sessionID = %s
@@ -384,14 +405,14 @@ def transfer_ownership():
         if result2 is None:
             # Insert
             cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s, %s)",
-                        id, username2, read, write, True, delegation)
+                        (id, username2, read, write, True, delegation,))
         else:
             # Update
-            cur.execute("UPDATE Permissions SET read = %s, write = %s, delegation = %s, ownership = %s WHERE id = %s",
-                        (read, write, delegation, True))
+            cur.execute("UPDATE Permissions SET read = %s, write = %s, delegation = %s, ownership = %s WHERE FK_Film = %s and FK_User = %s",
+                        (read, write, delegation, True, id, username2))
         # removing permissions of donor
-        cur.execute("UPDATE Permissions SET read = %s, write = %s, delegation = %s, ownership = %s WHERE id = %s",
-                    (False, False, False, False))
+        cur.execute("UPDATE Permissions SET read = %s, write = %s, delegation = %s, ownership = %s WHERE FK_Film = %s and FK_User = %s",
+                    (False, False, False, False, id, result[4]))
         conn.commit()
         return json.dumps({'success': True}), 200, {'ContentType':'application/json'}
     return json.dumps({'success': True}), 400, {'ContentType': 'application/json'}

@@ -84,7 +84,7 @@ input[type='radio']{
     margin-right: auto;
     width: 30px;
     height: 20px;
-    font-size: 25px;
+    font-size: 14px;
     background-color: rgb(8, 252, 0);
     display: block;
 }
@@ -94,7 +94,6 @@ input[type='radio']{
     margin-right: auto;
     width: 30px;
     height: 20px;
-    font-size: 25px;
     background-color: rgb(236, 8, 27);
     display: block;
 }
