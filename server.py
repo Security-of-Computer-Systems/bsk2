@@ -38,11 +38,43 @@ def init_database(cur):
 	    read boolean not null,
 	    write boolean not null,
 	    ownership boolean not null,
+	    delegation boolean not null,
 	    Primary KEY (FK_Film, FK_User),
 	    FOREIGN KEY (FK_Film) references Films (id) ON DELETE CASCADE,
 	    FOREIGN KEY (FK_User) references Users (username) ON DELETE CASCADE
         )""")
     conn.commit()
+
+    # Create users
+    letters = string.ascii_letters
+    cur.execute("INSERT INTO Users VALUES(%s, %s)",
+                ("abacki", ''.join(random.choice(letters) for i in range(126))))
+    cur.execute("INSERT INTO Users VALUES(%s, %s)",
+                ("babacki", ''.join(random.choice(letters) for i in range(126))))
+    cur.execute("INSERT INTO Users VALUES(%s, %s)",
+                ("cabacki", ''.join(random.choice(letters) for i in range(126))))
+
+    # Create films
+    cur.execute("INSERT INTO Films (title, time) VALUES(%s, %s)",
+                ("Nietykalni", 112))
+    cur.execute("INSERT INTO Films (title, time) VALUES(%s, %s)",
+                ("Zielona mila", 188))
+    cur.execute("INSERT INTO Films (title, time) VALUES(%s, %s)",
+                ("Ojciec Chrzestny", 175))
+    conn.commit()
+    # Create permissions
+    cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s)",
+                (1, "abacki", True, True, True, True))
+    cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s)",
+                (2, "babacki", True, True, True, True))
+    cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s)",
+                (3, "cabacki", True, True, True, True))
+    cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s)",
+                (1, "babacki", True, True, False, True))
+    cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s)",
+                (2, "babacki", True, True, False, False))
+
+
 
 @app.route('/css/<path:path>')
 def send_css(path):
@@ -306,6 +338,42 @@ def get_users():
 
     return json.dumps(dictionary_list)
 
+@app.route("/permissions", methods=['POST'])
+def transfer_ownership():
+    id = request.json['id']
+    username2 = request.json['username2']
+    read = request.json['read']
+    write = request.json['write']
+    delegation = request.json['delegation']
+    sessionID = request.cookies.get("sessID")
+
+    # Check if user is owner, and has assigned permissions
+    cur.execute("""SELECT ownership, delegation, read, write FROM Permissions 
+    INNER JOIN Films ON Films.id = Permissions.FK_Film
+    INNER JOIN Users ON Users.username = Permissions.FK_User
+    WHERE id = %s and sessionID = %s
+    """, (id, sessionID))
+    result = cur.fetchone()
+    if result is not None and result[0] == True and (delegation <= result[1]) and (read <= result[2]) and (write <= result[3]):
+
+        # Check if there is relation between user and film (insert if not, update if yes)
+        cur.execute("""SELECT * FROM Permissions WHERE FK_Film = %s and FK_User = %s""", (id, username2))
+        result2 = cur.fetchone()
+        if result2 is None:
+            # Insert
+            cur.execute("INSERT INTO Permissions VALUES(%s, %s, %s, %s, %s, %s)",
+                        id, username2, read, write, True, delegation)
+        else:
+            # Update
+            cur.execute("UPDATE Permissions SET read = %s, write = %s, delegation = %s, ownership = %s WHERE id = %s",
+                        (read, write, delegation, True))
+        # removing permissions of donor
+        cur.execute("UPDATE Permissions SET read = %s, write = %s, delegation = %s, ownership = %s WHERE id = %s",
+                    (False, False, False, False))
+        conn.commit()
+        return json.dumps({'success': True}), 200, {'ContentType':'application/json'}
+    return json.dumps({'success': True}), 400, {'ContentType': 'application/json'}
+
 # TODO
 # transfer ownership
 
@@ -325,7 +393,7 @@ except psycopg2.OperationalError:
     exit()
 
 
-
+init_database(cur)
 context = ('cert.pem', 'key.pem')#certificate and key files
 app.run(debug=True, ssl_context=context)
 
