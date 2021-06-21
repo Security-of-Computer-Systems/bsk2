@@ -3,6 +3,7 @@ import random
 import string
 
 import flask
+import networkx as nx
 import psycopg2
 import json
 from flask import Flask, request, jsonify, render_template, send_from_directory
@@ -19,6 +20,11 @@ cors = CORS(app, resource={
 })
 app.config["DEBUG"] = True
 app.secret_key = os.urandom(24)
+
+# delegation graphs
+delegation_graph = nx.DiGraph()
+read_graph = nx.DiGraph()
+write_graph = nx.DiGraph()
 
 def init_database(cur):
     cur.execute("""create table Films (
@@ -288,25 +294,72 @@ def delete_film(id):
             return json.dumps({'success': True}), 200, {'ContentType':'application/json'}
     return json.dumps({'success': False}), 400, {'ContentType':'application/json'}
 
+# Elimination of cycles in the permission delegation graph
+# Disability of granting permission to the same object by more than one donor
+def can_delegate(edge, delegation, read, write):
+
+    if delegation:
+        tmp_graph = delegation_graph
+        tmp_graph.add_edge(edge[0], edge[1])
+        # check if graph has cycles
+        for cycle in nx.simple_cycles(tmp_graph):
+            return False
+        if len([n for n in tmp_graph.predecessors(edge[1])]) >= 2:
+            return False
+    if read:
+        tmp_graph = read_graph
+        tmp_graph.add_edge(edge[0], edge[1])
+        # check if graph has cycles
+        for cycle in nx.simple_cycles(tmp_graph):
+            return False
+        if len([n for n in tmp_graph.predecessors(edge[1])]) >= 2:
+            return False
+    if write:
+        tmp_graph = write_graph
+        tmp_graph.add_edge(edge[0], edge[1])
+        # check if graph has cycles
+        for cycle in nx.simple_cycles(tmp_graph):
+            return False
+        if len([n for n in tmp_graph.predecessors(edge[1])]) >= 2:
+            return False
+
+    if delegation:
+        delegation_graph.add_edge(edge[0], edge[1])
+    if read:
+        read_graph.add_edge(edge[0], edge[1])
+    if write:
+        write_graph.add_edge(edge[0], edge[1])
+    return True
+
 @app.route("/permissions", methods=['POST'])
 def set_permissions():
-    username = request.authorization['username']
-    password = request.authorization['password']
+    sessionID = request.cookies.get("sessID")
     id = request.json['id']
     username2 = request.json['username2']
     read = request.json['read']
     write = request.json['write']
     delegation = request.json['delegation']
 
-    if authorize(username, password):
-        # Sprawdź czy użytkownik przekazujący ma prawa do przekazania i czy posiada prawa przekazywane
-        cur.execute("""SELECT delegation, read, write FROM Permissions 
-        INNER JOIN Films ON Films.id = Permissions.FK_Film
-        INNER JOIN Users ON Users.username = Permissions.FK_User
-        WHERE id = %s and username = %s
-        """, (id, username))
-        result = cur.fetchone()
-        if result is not None and result[0] == True and (read <= result[1]) and (write <= result[2]):
+    # find donor user's username
+    cur.execute("""SELECT username FROM Users  
+        WHERE sessionID = %s
+        """, (sessionID))
+    donor_username = cur.fetchone()[0]
+
+
+    cur.execute("""SELECT delegation, read, write FROM Permissions 
+    INNER JOIN Films ON Films.id = Permissions.FK_Film
+    INNER JOIN Users ON Users.username = Permissions.FK_User
+    WHERE id = %s and sessionID = %s
+    """, (id, sessionID))
+    result = cur.fetchone()
+
+    #  Check if user has delegation permission, assigned permissions,
+    if result is not None and result[0] == True and (read <= result[1]) and (write <= result[2]):
+        # Elimination of cycles in the permission delegation graph
+        # Disability of granting permission to the same object by more than one donor
+        if can_delegate((donor_username, username2), delegation, read, write):
+
             # Sprawdź czy relacja użytkownika z filmem istnieje
             cur.execute("""SELECT * FROM Permissions 
                     WHERE FK_Film = %s and FK_User = %s
@@ -391,6 +444,7 @@ try:
 except psycopg2.OperationalError:
     print("No database connection")
     exit()
+
 
 
 init_database(cur)
