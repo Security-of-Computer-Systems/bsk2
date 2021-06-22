@@ -4,8 +4,9 @@
         <link rel="stylesheet" type="text/css" href="../css/style.css" />
         <script src="../js/script.js"></script>
     </head>
-    <body onload="getFilm()">
+    <body onload="getFilmToEdit()">
         <div class="menu">
+        
            <table id="filmTable">
                 <tr>
                     <th>Id</th>
@@ -13,6 +14,7 @@
                     <th>Czas</th>
                 </tr>
            </table>
+           <input type="button" value="Edytuj" class="menuButton" onclick="editFilm()"/>
            <a href="https://localhost:5000/show-films"><button class="menuButton">Wróć</button></a>
         </div>
     </body>

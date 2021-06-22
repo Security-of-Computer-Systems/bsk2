@@ -1,4 +1,5 @@
 .idea/
 venv/
+screeny/
 cert.pem
 key.pem

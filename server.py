@@ -97,9 +97,58 @@ def send_js(path):
 def serve_films():
     return flask.make_response(render_template('showFilms.html'))
 
-@app.route('/delete-film')
+@app.route('/show-film')
+def serve_film():
+    return flask.make_response(render_template('showFilm.html'))
+
+@app.route('/edit-film', methods=['GET','PUT'])
+def serve_edit_film():
+    if request.method == "PUT":
+        sessionID = request.cookies.get("sessID")
+        id = request.json['id']
+        title = request.json['title']
+        time = request.json['time']
+
+        cur.execute("""
+                SELECT username 
+                FROM Users 
+                JOIN Permissions on Permissions.FK_User = Users.username
+                WHERE sessionID = %s and write = True and FK_Film = %s""", (sessionID, id,))
+
+        username = cur.fetchone()
+
+        if username is not None:
+
+            cur.execute("UPDATE Films SET title = %s, time = %s WHERE id = %s", (title, time, id,))
+            conn.commit()
+
+            return json.dumps({'success': True}), 200, {'ContentType': 'application/json'}
+        else:
+            return json.dumps({'success': False}), 400, {'ContentType': 'application/json'}
+    else:
+        return flask.make_response(render_template('editFilm.html'))
+
+@app.route('/delete-film', methods=["DELETE"])
 def serve_delete_film():
-    return flask.make_response(render_template('deleteFilm.html'))
+    sessionID = request.cookies.get("sessID")
+    id = request.json['id']
+
+    cur.execute("""
+                    SELECT username 
+                    FROM Users 
+                    JOIN Permissions on Permissions.FK_User = Users.username
+                    WHERE sessionID = %s and write = True and FK_Film = %s""", (sessionID, id,))
+
+    username = cur.fetchone()
+
+    if username is not None:
+
+        cur.execute("DELETE FROM Films WHERE id = %s;", (id,))
+        conn.commit()
+
+        return json.dumps({'success': True}), 200, {'ContentType': 'application/json'}
+    else:
+        return json.dumps({'success': False}), 400, {'ContentType': 'application/json'}
 
 @app.route('/add-film', methods=['GET','POST'])
 def serve_add_film():
@@ -131,6 +180,20 @@ def serve_add_film():
     else:
         return flask.make_response(render_template('addFilm.html'))
 
+@app.route('/logout', methods=['POST'])
+def serve_logout():
+    sessionId = request.cookies.get("sessID")
+
+    cur.execute("""UPDATE Users 
+                SET sessionID = null
+                WHERE sessionID = %s;""", (sessionId,))
+    conn.commit()
+
+    response = flask.make_response()
+    response.status_code = 200
+
+    return response
+
 @app.route('/login', methods=['GET','POST'])
 def serve_login():
     if request.method=="POST":
@@ -142,9 +205,9 @@ def serve_login():
         if result is not None and result[0] == password:
             sessionId = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(256))
 
-            cur.execute("UPDATE Users "
-                        "SET sessionID = %s"
-                        "WHERE username = %s;", (sessionId,username,))
+            cur.execute("""UPDATE Users 
+                        SET sessionID = %s
+                        WHERE username = %s;""", (sessionId,username,))
 
             conn.commit()
 
@@ -235,7 +298,7 @@ def get_film(id):
     WHERE id = %s and sessionID = %s
     """, (id, sessionID))
     result = cur.fetchone()
-    if result is not None and result[0] == True:
+    if result is not None and (result[0] == True):
         cur.execute("SELECT * FROM Films WHERE id = %s;", (id,))
 
         film = cur.fetchall()[0]
@@ -243,46 +306,36 @@ def get_film(id):
 
         return json.dumps(dict(zip(keys, film)))
 
-    return flask.make_response(render_template('showFilms.html'))
+    return flask.redirect(flask.url_for("serve_films"))
 
-@app.route("/films/<int:id>", methods=['PUT'])
-def edit_film(id):
-    title = request.json['title']
-    time = request.json['time']
-    username = request.authorization['username']
-    password = request.authorization['password']
+@app.route("/filmToEdit/<int:id>", methods=['GET'])
+def get_film_to_edit(id):
 
-    if authorize(username, password):
-        cur.execute("""SELECT write FROM Permissions 
-        INNER JOIN Films ON Films.id = Permissions.FK_Film
-        INNER JOIN Users ON Users.username = Permissions.FK_User
-        WHERE id = %s and username = %s
-        """, (id, username))
-        result = cur.fetchone()
-        if result is not None and result[0] == True:
-            cur.execute("UPDATE Films SET title = %s, time = %s WHERE id = %s", (title, time, id))
-            conn.commit()
-            return 1
-    return 0
+    sessionID = request.cookies.get("sessID")
 
+    cur.execute("""SELECT write, read FROM Permissions 
+    INNER JOIN Films ON Films.id = Permissions.FK_Film
+    INNER JOIN Users ON Users.username = Permissions.FK_User
+    WHERE id = %s and sessionID = %s
+    """, (id, sessionID))
+    result = cur.fetchone()
+    if result is not None and result[0] == True and result[1] == False:
+        cur.execute("SELECT id, title FROM Films WHERE id = %s;", (id,))
 
-@app.route("/films/<int:id>", methods=['DELETE'])
-def delete_film(id):
-    username = request.authorization['username']
-    password = request.authorization['password']
+        film = cur.fetchall()[0]
+        keys = ["id", "title"]
 
-    if authorize(username, password):
-        cur.execute("""SELECT write FROM Permissions 
-        INNER JOIN Films ON Films.id = Permissions.FK_Film
-        INNER JOIN Users ON Users.username = Permissions.FK_User
-        WHERE id = %s and username = %s
-        """, (id, username))
-        result = cur.fetchone()
-        if result is not None and result[0] == True:
-            cur.execute("DELETE FROM Films WHERE id = %s;", (id,))
-            conn.commit()
-            return json.dumps({'success': True}), 200, {'ContentType':'application/json'}
-    return json.dumps({'success': False}), 400, {'ContentType':'application/json'}
+        return json.dumps(dict(zip(keys, film)))
+
+    elif result is not None and result[0] == True and result[1] == True:
+        cur.execute("SELECT id, title, time FROM Films WHERE id = %s;", (id,))
+
+        film = cur.fetchall()[0]
+        keys = ["id", "title", "time"]
+
+        return json.dumps(dict(zip(keys, film)))
+
+    return flask.redirect(flask.url_for("serve_films"))
 
 # Elimination of cycles in the permission delegation graph
 # Disability of granting permission to the same object by more than one donor

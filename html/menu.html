@@ -1,16 +1,17 @@
 <html>
     <head>
+        <meta charset="UTF-8">
         <link rel="stylesheet" type="text/css" href="../css/style.css" />
+        <script src="../js/script.js"></script>
     </head>
     <body>
         <div class="menu">
-            Zalogowano jako: Użytkownik1
-            <br>
-            <br>
+            
+            
             <button class="menuButton"><a href="https://localhost:5000/show-films">Zobacz filmy</a></button>
             <button class="menuButton"><a href="https://localhost:5000/add-film">Dodaj film</a></button>
             <button class="menuButton"><a href="https://localhost:5000/permissions">Nadaj prawo</a></button>
-            <button class="menuButton"><a href="https://localhost:5000/login">Wyloguj</a></button>
+            <button class="menuButton" onclick="logout()">Wyloguj</button>
         </div>
     </body>
 </html>
