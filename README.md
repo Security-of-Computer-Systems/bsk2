@@ -1,7 +1,7 @@
 # Purpose / Motivation
 Group project made for Security of Computer Systems course.
 
-#General Info
+# General Info
 Implementation of data base access control method. (Discretionary Access Control)
 
 # Technologies
